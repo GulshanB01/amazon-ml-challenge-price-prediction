@@ -1,128 +1,206 @@
-# Amazon ML Challenge - Clean ML Pipeline
+# Amazon ML Challenge - Multimodal Price Prediction
 
-This folder contains a cleaned, reusable version of the notebook workflow.
+This project is a cleaned and structured machine learning pipeline for the Amazon ML Challenge. It predicts product prices using a combination of product catalog text, product images, quantity/unit information, and ensemble regression models.
 
-## Project Summary
+## Project Overview
 
-The project predicts product price from Amazon catalog data using:
+Product prices are predicted from multiple data sources:
 
-- Parsed catalog text fields
-- Normalized product quantity/unit features
-- Log-transformed quantity features
-- One-hot and target-encoded unit features
+- Product catalog text from `catalog_content`
+- Product image URLs from `image_link`
+- Product quantity/value information
+- Product unit information such as ounce, count, gram, ml, kg
 - TF-IDF text embeddings
-- Image embeddings
-- Cross-validated target encoding for product units
-- XGBoost/LightGBM regression ensemble
-- Log-price training with positive prediction clipping for lower SMAPE
+- EfficientNetB0 image embeddings
+- XGBoost and LightGBM regression models
 
-## Why This Version Is Cleaner
+The model is evaluated using:
 
-The original notebooks store `text_vec` and `image_vec` inside CSV files as shortened string representations like `[0. 0. ... 0.]`. Those strings cannot be reliably converted back into vectors. This version keeps embeddings as real arrays/sparse matrices and saves final training data as `.npz` / `.npy` files.
+- MAE
+- RMSE
+- SMAPE
 
-## Recommended Input Files
-
-Place your original files in one folder, for example:
+Best validation result from the cleaned full pipeline:
 
 ```text
-C:\Users\user\Data science\submit
+SMAPE: 51.09%
+MAE:   7.90
+RMSE:  11.72
 ```
 
-Recommended files:
+## Why This Project Was Refactored
 
-- `train.csv` - original Amazon ML Challenge training data
-- `image_vectors.npy` - dictionary mapping `sample_id` to image embedding
-- `text_vec.pkl` - TF-IDF sparse matrix created from `catalog_content`
-- `processed_dataset.csv` or `final_dataset1.csv` - optional, useful for reference
-
-## Full Workflow
-
-Run the files in this order:
+The original work was spread across multiple notebooks and some vector columns were saved inside CSV files as shortened strings like:
 
 ```text
-00_generate_embeddings.py  ->  creates text_vec.pkl and image_vectors.npy
-01_prepare_features.py     ->  builds clean model-ready matrices
-02_train_ensemble.py       ->  trains XGBoost + LightGBM ensemble
-03_train_baseline.py       ->  optional fallback if raw text alignment is unavailable
+[0. 0. ... 0.]
 ```
 
-## Install Requirements
+Those values cannot be reliably converted back into real vectors. This cleaned version stores embeddings and model-ready features in proper formats:
+
+- `.pkl` for TF-IDF sparse text vectors
+- `.npy` for image embeddings and targets
+- `.npz` for sparse model feature matrices
+- `.joblib` for trained models
+
+## Project Structure
+
+```text
+amazon_ml_challenge_clean/
+│
+├── 00_generate_embeddings.py      # Generates text and image embeddings
+├── 01_prepare_features.py         # Builds clean model-ready features
+├── 02_train_ensemble.py           # Trains XGBoost + LightGBM ensemble
+├── 03_train_baseline.py           # Fallback model when raw text alignment is unavailable
+├── requirements.txt               # Python dependencies
+└── README.md                      # Project documentation
+```
+
+## Input Files
+
+Recommended input files:
+
+```text
+train.csv
+text_vec.pkl
+image_vectors.npy
+processed_dataset.csv
+final_dataset1.csv
+```
+
+Expected columns in `train.csv`:
+
+```text
+sample_id
+catalog_content
+image_link
+price
+```
+
+## Installation
+
+Install required packages:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Generate Embeddings
+## Workflow
 
-Start from the original challenge training file:
+Run the files in this order:
+
+```text
+00_generate_embeddings.py
+        ↓
+01_prepare_features.py
+        ↓
+02_train_ensemble.py
+        ↓
+metrics.json / validation_predictions.csv
+```
+
+## Step 1: Generate Embeddings
+
+This step creates text and image embeddings from the raw dataset.
 
 ```bash
 python 00_generate_embeddings.py ^
-  --raw-csv "C:\Users\user\Data science\submit\train.csv" ^
-  --output-dir "C:\Users\user\Data science\submit\clean_artifacts"
-```
-
-This creates:
-
-- `text_vec.pkl` - TF-IDF text embedding matrix
-- `tfidf_vectorizer.joblib` - fitted text vectorizer
-- `image_vectors.npy` - EfficientNetB0 image embeddings mapped by `sample_id`
-- `embedding_summary.json`
-
-If you already have text embeddings and only want image embeddings:
-
-```bash
-python 00_generate_embeddings.py ^
-  --raw-csv "C:\Users\user\Data science\submit\train.csv" ^
-  --output-dir "C:\Users\user\Data science\submit\clean_artifacts" ^
-  --skip-text
-```
-
-## Build Features
-
-Best option, if `train.csv` is available:
-
-```bash
-python 01_prepare_features.py ^
-  --raw-csv "C:\Users\user\Data science\submit\train.csv" ^
-  --text-vectors "C:\Users\user\Data science\submit\clean_artifacts\text_vec.pkl" ^
-  --image-vectors "C:\Users\user\Data science\submit\clean_artifacts\image_vectors.npy" ^
-  --output-dir "C:\Users\user\Data science\submit\clean_artifacts"
-```
-
-This creates:
-
-- `features_sparse.npz`
-- `target.npy`
-- `sample_ids.npy`
-- `feature_names.json`
-- `modeling_dataset.csv`
-
-## Train Model
-
-```bash
-python 02_train_ensemble.py ^
-  --features "C:\Users\user\Data science\submit\clean_artifacts\features_sparse.npz" ^
-  --target "C:\Users\user\Data science\submit\clean_artifacts\target.npy" ^
-  --sample-ids "C:\Users\user\Data science\submit\clean_artifacts\sample_ids.npy" ^
+  --raw-csv "C:\Users\user\Data science\train.csv" ^
   --output-dir "C:\Users\user\Data science\submit\clean_artifacts"
 ```
 
 Outputs:
 
-- `validation_predictions.csv`
-- `metrics.json`
-- `xgb_model.joblib`
-- `lgb_model.joblib`
+```text
+text_vec.pkl
+tfidf_vectorizer.joblib
+image_vectors.npy
+embedding_summary.json
+```
 
-The trainer is tuned for SMAPE improvement by training on `log1p(price)`,
-converting predictions back with `expm1`, and clipping predictions to positive
-values. This avoids negative price predictions, which were one reason the
-notebook SMAPE stayed around 60%.
+What happens:
+
+- `catalog_content` is converted into TF-IDF text vectors.
+- Images are downloaded from `image_link`.
+- EfficientNetB0 generates image embeddings.
+- Image embeddings are mapped using `sample_id`.
+
+If text embeddings already exist and only image embeddings are needed:
+
+```bash
+python 00_generate_embeddings.py ^
+  --raw-csv "C:\Users\user\Data science\train.csv" ^
+  --output-dir "C:\Users\user\Data science\submit\clean_artifacts" ^
+  --skip-text
+```
+
+## Step 2: Prepare Features
+
+This step parses product details, cleans units, removes outliers, and combines all features.
+
+```bash
+python 01_prepare_features.py ^
+  --raw-csv "C:\Users\user\Data science\train.csv" ^
+  --text-vectors "C:\Users\user\Data science\submit\text_vec.pkl" ^
+  --image-vectors "C:\Users\user\Data science\submit\image_vectors.npy" ^
+  --output-dir "C:\Users\user\Data science\submit\clean_artifacts_full"
+```
+
+Outputs:
+
+```text
+features_sparse.npz
+target.npy
+sample_ids.npy
+feature_names.json
+modeling_dataset.csv
+build_summary.json
+```
+
+Feature engineering includes:
+
+- Parsing item name, description, bullet points, value, and unit
+- Unit normalization
+- Log-transformed value features
+- Unit target encoding
+- Unit one-hot encoding
+- TF-IDF text features
+- EfficientNetB0 image features
+- Price outlier removal
+
+## Step 3: Train Ensemble Model
+
+This step trains XGBoost and LightGBM regressors.
+
+```bash
+python 02_train_ensemble.py ^
+  --features "C:\Users\user\Data science\submit\clean_artifacts_full\features_sparse.npz" ^
+  --target "C:\Users\user\Data science\submit\clean_artifacts_full\target.npy" ^
+  --sample-ids "C:\Users\user\Data science\submit\clean_artifacts_full\sample_ids.npy" ^
+  --output-dir "C:\Users\user\Data science\submit\clean_artifacts_full"
+```
+
+Outputs:
+
+```text
+metrics.json
+validation_predictions.csv
+xgb_model.joblib
+lgb_model.joblib
+```
+
+Training strategy:
+
+- Train on `log1p(price)` instead of raw price
+- Convert predictions back using `expm1`
+- Clip predictions to positive values
+- Average XGBoost and LightGBM predictions
+
+This helps reduce SMAPE and avoids negative price predictions.
 
 ## Fallback Baseline
 
-If you only have `final_dataset1.csv` and `image_vectors.npy`, run:
+Use this only when the original `train.csv` is not available.
 
 ```bash
 python 03_train_baseline.py ^
@@ -131,13 +209,70 @@ python 03_train_baseline.py ^
   --output-dir "C:\Users\user\Data science\submit\clean_artifacts"
 ```
 
-This baseline uses scalar columns and real image vectors. It skips the CSV text-vector column because that column was saved in a shortened, non-parseable format.
+The fallback model uses scalar features and image embeddings. It does not use text vectors from `final_dataset1.csv` because those vectors were saved in a shortened, non-parseable format.
 
-## Resume Description
+Fallback result:
 
-Amazon ML Challenge | Multimodal Price Prediction
+```text
+SMAPE: 55.84%
+```
 
-- Built a multimodal ML pipeline using product catalog text, structured attributes, and image embeddings.
-- Parsed noisy product descriptions, normalized units, engineered numeric/log features, and applied cross-validated target encoding.
-- Combined TF-IDF text vectors, image embeddings, and structured features for regression-based price prediction.
-- Trained and evaluated log-target XGBoost/LightGBM ensemble models using MAE, RMSE, and SMAPE.
+## Models Used
+
+The project uses:
+
+- TF-IDF Vectorizer for text feature extraction
+- EfficientNetB0 for image embeddings
+- XGBoost Regressor for price prediction
+- LightGBM Regressor for price prediction
+- XGBoost + LightGBM ensemble for final prediction
+- HistGradientBoostingRegressor for fallback baseline
+
+## Evaluation Metric
+
+The main metric is SMAPE:
+
+```text
+SMAPE = 100 * mean(|actual - predicted| / ((|actual| + |predicted|) / 2))
+```
+
+Lower SMAPE is better.
+
+SMAPE is useful here because product prices vary across different ranges, and percentage-based error gives a more balanced view than raw error alone.
+
+## Results
+
+Cleaned full pipeline:
+
+```text
+Rows:     68,233
+Features: 6,335
+SMAPE:    51.09%
+MAE:      7.90
+RMSE:     11.72
+```
+
+Fallback baseline:
+
+```text
+SMAPE: 55.84%
+```
+
+## Key Learnings
+
+This project helped demonstrate:
+
+- End-to-end machine learning pipeline development
+- Feature engineering from noisy product catalog text
+- Multimodal learning using text and image data
+- Sparse matrix handling for large feature sets
+- Regression model training and evaluation
+- SMAPE-focused model improvement
+- Refactoring notebooks into clean Python scripts
+
+## Resume Summary
+
+**Amazon ML Challenge | Multimodal Product Price Prediction**
+
+Built an end-to-end multimodal ML pipeline to predict Amazon product prices using catalog text, product images, and structured quantity/unit features. Generated TF-IDF text embeddings and EfficientNetB0 image embeddings, engineered unit-aware features, and trained a log-target XGBoost-LightGBM ensemble evaluated with SMAPE, MAE, and RMSE.
+
